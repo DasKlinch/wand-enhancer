@@ -1,0 +1,44 @@
+name: Clean up old Actions artifacts
+
+on:
+  push:
+    paths:
+      - .github/workflows/artifact-housekeeping.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete Actions artifacts older than 7 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d '7 days ago' +%s)
+          artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" --paginate --jq '.artifacts[] | select(.expired == false) | [.id, .created_at, .name] | @tsv')
+          if [[ -z "$artifacts" ]]; then
+            echo "No artifacts to inspect."
+            exit 0
+          fi
+          kept=0
+          deleted=0
+          while IFS=$'\t' read -r id created name; do
+            [[ -n "$id" ]] || continue
+            created_epoch=$(date -u -d "$created" +%s)
+            if (( created_epoch <= cutoff )); then
+              echo "Delete old artifact: $name ($id), created $created"
+              gh api --method DELETE --silent "repos/${GITHUB_REPOSITORY}/actions/artifacts/$id"
+              (( ++deleted ))
+            else
+              echo "Keep recent artifact: $name ($id), created $created"
+              (( ++kept ))
+            fi
+          done <<< "$artifacts"
+          echo "Deleted: $deleted; kept: $kept"
