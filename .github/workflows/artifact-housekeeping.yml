@@ -1,9 +1,6 @@
 name: Clean up old Actions artifacts
 
 on:
-  push:
-    paths:
-      - .github/workflows/artifact-housekeeping.yml
   workflow_dispatch:
 
 permissions:
